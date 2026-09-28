@@ -9,7 +9,7 @@ from PIL import Image
 st.set_page_config(page_title="Assistente de Preços - Komprão", page_icon="🛒", layout="centered")
 
 st.title("🛒 Assistente de Preços - Komprão")
-st.write("Envie uma ou mais fotos de talões ou etiquetas de preço para registar e monitorizar os valores.")
+st.write("Envie fotos de talões ou etiquetas de preço (idealmente em lotes de até **3 recibos** por vez para respeitar o limite gratuito).")
 
 # Configuração da chave do Gemini a partir dos Secrets do Streamlit
 if "GEMINI_API_KEY" in st.secrets:
@@ -18,7 +18,7 @@ if "GEMINI_API_KEY" in st.secrets:
 # Ficheiro local para guardar o histórico de preços
 FICHEIRO_HISTORICO = "historico_precos.csv"
 
-# Carregar imagens do utilizador (permite múltiplos ficheiros)
+# Carregar imagens do utilizador
 fotos_upload = st.file_uploader(
     "Carregar fotos dos talões ou produtos", 
     type=["jpg", "jpeg", "png"], 
@@ -26,11 +26,14 @@ fotos_upload = st.file_uploader(
 )
 
 if fotos_upload:
-    st.info(f"Foram carregados {len(fotos_upload)} ficheiro(s). Clique abaixo para iniciar a análise individual.")
+    total_fotos = len(fotos_upload)
+    st.info(f"Foram carregados {total_fotos} ficheiro(s).")
     
-    if st.button("Analisar e Registar Todos os Talões"):
+    if total_fotos > 3:
+        st.warning("⚠️ Carregou mais de 3 recibos. Para evitar o limite de 5 pedidos/minuto do plano gratuito, o sistema irá processá-los em lotes de 3 com pequenas pausas automáticas.")
+
+    if st.button("Analisar e Registar Talões"):
         barrinha_progresso = st.progress(0)
-        total_fotos = len(fotos_upload)
         
         for index, foto_upload in enumerate(fotos_upload):
             imagem = Image.open(foto_upload)
@@ -47,10 +50,10 @@ if fotos_upload:
             max_tentativas = 3
             resposta_texto = ""
             
-            # Sistema de tentativas robusto com pausa integrada em caso de erro 429
+            # Sistema de tentativas robusto com pausa integrada
             while not sucesso and tentativas < max_tentativas:
                 try:
-                    with st.spinner(f"A processar o talão {index + 1} de {total_fotos} ({foto_upload.name}) - Tentativa {tentativas + 1}..."):
+                    with st.spinner(f"A processar o talão {index + 1} de {total_fotos} ({foto_upload.name})..."):
                         modelo = genai.GenerativeModel('gemini-3.8-flash')
                         resposta = modelo.generate_content([imagem, prompt])
                         resposta_texto = resposta.text
@@ -61,11 +64,11 @@ if fotos_upload:
                     if "429" in erro_str or "quota" in erro_str.lower() or "ResourceExhausted" in erro_str:
                         tentativas += 1
                         if tentativas < max_tentativas:
-                            aviso_placeholder = st.warning(f"⏳ Limite de pedidos atingido. A aguardar 15 segundos para tentar novamente ({tentativas}/{max_tentativas})...")
-                            time.sleep(15) # Pausa estendida para limpar a janela de RPM do plano gratuito
+                            aviso_placeholder = st.warning(f"⏳ Limite de pedidos atingido. A aguardar 12 segundos para tentar novamente ({tentativas}/{max_tentativas})...")
+                            time.sleep(12)
                             aviso_placeholder.empty()
                         else:
-                            st.error(f"⚠️ O limite de pedidos foi atingido repetidamente para '{foto_upload.name}'. Tente enviar menos fotos de cada vez.")
+                            st.error(f"⚠️ O limite de pedidos foi atingido para '{foto_upload.name}'. Tente novamente mais tarde.")
                     else:
                         st.error(f"⚠️ Erro ao processar '{foto_upload.name}': {erro_str}")
                         break
@@ -88,15 +91,17 @@ if fotos_upload:
                     
                 df_final.to_csv(FICHEIRO_HISTORICO, index=False)
                 
-                # Pausa obrigatória entre talões diferentes para evitar disparar o limite no próximo ficheiro
-                if index < total_fotos - 1:
-                    with st.spinner("A aguardar 10 segundos antes do próximo talão para respeitar o limite..."):
-                        time.sleep(10)
+                # Pausa inteligente: A cada 3 fotos processadas, dá uma pausa maior de 15 segundos para limpar a janela de RPM
+                if (index + 1) % 3 == 0 and index < total_fotos - 1:
+                    with st.spinner("☕ Lote de 3 talões concluído. A fazer uma pausa de 15 segundos para respeitar o limite gratuito..."):
+                        time.sleep(15)
+                elif index < total_fotos - 1:
+                    time.sleep(3) # Pausa curta entre fotos individuais do mesmo lote
             
             # Atualizar barra de progresso
             barrinha_progresso.progress((index + 1) / total_fotos)
             
-        st.success("🎉 Processamento de todos os talões concluído!")
+        st.success("🎉 Processamento de todos os talões concluído com sucesso!")
 
 # Secção para visualizar histórico guardado
 st.markdown("---")
@@ -138,7 +143,7 @@ if os.path.exists(FICHEIRO_HISTORICO):
                 if "429" in erro_str or "quota" in erro_str.lower() or "ResourceExhausted" in erro_str:
                     st.warning(
                         "⚠️ **Limite de pedidos atingido temporariamente (Plano Gratuito)**\n\n"
-                        "Atingiu o limite de **5 pedidos por minuto**. Por favor, aguarde 15 segundos e tente novamente."
+                        "Atingiu o limite de **5 pedidos por minuto**. Por favor, aguarde alguns segundos e tente novamente."
                     )
                 else:
                     st.error(f"⚠️ Erro ao processar a pergunta: {erro_str}")
