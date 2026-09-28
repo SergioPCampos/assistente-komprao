@@ -1,4 +1,5 @@
 import os
+import time
 import streamlit as st
 import pandas as pd
 import google.generativeai as genai
@@ -42,39 +43,51 @@ if fotos_upload:
                     "Retorna a resposta numa lista clara."
                 )
                 
-                try:
-                    # Utilização do modelo compatível
-                    modelo = genai.GenerativeModel('gemini-3.8-flash')
-                    resposta = modelo.generate_content([imagem, prompt])
-                    
-                    st.success(f"Análise de '{foto_upload.name}' concluída com sucesso!")
-                    st.write(resposta.text)
-                    
-                    # Guardar o resultado individual no histórico CSV
-                    novo_registo = pd.DataFrame({
-                        "Data": [pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")],
-                        "Detalhes": [f"[{foto_upload.name}] \n{resposta.text}"]
-                    })
-                    
-                    if os.path.exists(FICHEIRO_HISTORICO):
-                        df_existente = pd.read_csv(FICHEIRO_HISTORICO)
-                        df_final = pd.concat([df_existente, novo_registo], ignore_index=True)
-                    else:
-                        df_final = novo_registo
+                sucesso = False
+                tentativas = 0
+                max_tentativas = 3
+                
+                # Sistema de tentativas com espera automática caso atinja o limite
+                while not sucesso and tentativas < max_tentativas:
+                    try:
+                        modelo = genai.GenerativeModel('gemini-3.8-flash')
+                        resposta = modelo.generate_content([imagem, prompt])
                         
-                    df_final.to_csv(FICHEIRO_HISTORICO, index=False)
-                    
-                except Exception as e:
-                    erro_str = str(e)
-                    if "429" in erro_str or "quota" in erro_str.lower():
-                        st.warning(
-                            f"⚠️ **Limite de pedidos atingido (Plano Gratuito)**\n\n"
-                            f"Atingiu o limite de 5 pedidos por minuto ao processar '{foto_upload.name}'. "
-                            "⏳ *Aguarde alguns segundos antes de enviar mais talões.*"
-                        )
-                        break # Interrompe o ciclo para evitar bloquear mais
-                    else:
-                        st.error(f"⚠️ Erro ao processar '{foto_upload.name}': {erro_str}")
+                        st.success(f"Análise de '{foto_upload.name}' concluída com sucesso!")
+                        st.write(resposta.text)
+                        
+                        # Guardar o resultado individual no histórico CSV
+                        novo_registo = pd.DataFrame({
+                            "Data": [pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")],
+                            "Detalhes": [f"[{foto_upload.name}] \n{resposta.text}"]
+                        })
+                        
+                        if os.path.exists(FICHEIRO_HISTORICO):
+                            df_existente = pd.read_csv(FICHEIRO_HISTORICO)
+                            df_final = pd.concat([df_existente, novo_registo], ignore_index=True)
+                        else:
+                            df_final = novo_registo
+                            
+                        df_final.to_csv(FICHEIRO_HISTORICO, index=False)
+                        sucesso = True
+                        
+                    except Exception as e:
+                        erro_str = str(e)
+                        if "429" in erro_str or "quota" in erro_str.lower():
+                            tentativas += 1
+                            if tentativas < max_tentativas:
+                                st.warning(f"⏳ Limite de pedidos atingido. A aguardar 12 segundos para tentar novamente (Tentativa {tentativas}/{max_tentativas})...")
+                                time.sleep(12) # Pausa de segurança para respeitar o limite de 1 por 12s (5 por min)
+                            else:
+                                st.error(f"⚠️ O limite de pedidos foi atingido repetidamente ao processar '{foto_upload.name}'. Tente enviar menos fotos de cada vez.")
+                                break
+                        else:
+                            st.error(f"⚠️ Erro ao processar '{foto_upload.name}': {erro_str}")
+                            break
+            
+            # Pausa extra entre talões diferentes para garantir que não estoura o limite por minuto
+            if index < total_fotos - 1 and sucesso:
+                time.sleep(12)
             
             # Atualizar barra de progresso
             barrinha_progresso.progress((index + 1) / total_fotos)
