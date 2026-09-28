@@ -93,5 +93,32 @@ if os.path.exists(FICHEIRO_HISTORICO):
         st.rerun()
 else:
     st.info("Ainda não existem registos guardados no histórico.")
+
+# --- Secção de Chat Interativo com o Histórico ---
+st.markdown("---")
+st.subheader("💬 Conversar sobre o Histórico de Preços")
+
+if os.path.exists(FICHEIRO_HISTORICO):
+    df_chat = pd.read_csv(FICHEIRO_HISTORICO)
+    
+    # Caixa de texto para o utilizador fazer perguntas
+    pergunta_utilizador = st.text_input("Faça uma pergunta sobre os preços guardados (ex: Qual a diferença de preço do leite?):")
+    
+    if pergunta_utilizador:
+        with st.spinner("A consultar o histórico..."):
+            prompt_chat = (
+                f"Com base no seguinte histórico de preços em CSV:\n{df_chat.to_string()}\n\n"
+                f"Responde à seguinte pergunta do utilizador de forma clara e objetiva: {pergunta_utilizador}"
+            )
+            
+            try:
+                modelo_chat = genai.GenerativeModel('gemini-3.8-flash')
+                resposta_chat = modelo_chat.generate_content(prompt_chat)
+                st.markdown("**Resposta do Assistente:**")
+                st.write(resposta_chat.text)
+            except Exception as e:
+                st.error(f"Erro ao processar a pergunta: {e}")
+else:
+    st.info("Registe pelo menos um talão para poder conversar sobre o histórico.")
     
   
