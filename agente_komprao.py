@@ -36,58 +36,62 @@ if fotos_upload:
             imagem = Image.open(foto_upload)
             st.image(imagem, caption=f"A analisar: {foto_upload.name}", use_container_width=True)
             
-            with st.spinner(f"A processar o talão {index + 1} de {total_fotos} ({foto_upload.name})..."):
-                prompt = (
-                    "Analisa esta imagem de um talão de compras ou etiqueta de preço do supermercado Komprão. "
-                    "Extrai os dados de forma limpa e estruturada, indicando o nome do produto, a quantidade e o preço unitário ou total. "
-                    "Retorna a resposta numa lista clara."
-                )
-                
-                sucesso = False
-                tentativas = 0
-                max_tentativas = 3
-                
-                # Sistema de tentativas com espera automática caso atinja o limite
-                while not sucesso and tentativas < max_tentativas:
-                    try:
+            prompt = (
+                "Analisa esta imagem de um talão de compras ou etiqueta de preço do supermercado Komprão. "
+                "Extrai os dados de forma limpa e estruturada, indicando o nome do produto, a quantidade e o preço unitário ou total. "
+                "Retorna a resposta numa lista clara."
+            )
+            
+            sucesso = False
+            tentativas = 0
+            max_tentativas = 3
+            resposta_texto = ""
+            
+            # Sistema de tentativas robusto com pausa integrada em caso de erro 429
+            while not sucesso and tentativas < max_tentativas:
+                try:
+                    with st.spinner(f"A processar o talão {index + 1} de {total_fotos} ({foto_upload.name}) - Tentativa {tentativas + 1}..."):
                         modelo = genai.GenerativeModel('gemini-3.8-flash')
                         resposta = modelo.generate_content([imagem, prompt])
-                        
-                        st.success(f"Análise de '{foto_upload.name}' concluída com sucesso!")
-                        st.write(resposta.text)
-                        
-                        # Guardar o resultado individual no histórico CSV
-                        novo_registo = pd.DataFrame({
-                            "Data": [pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")],
-                            "Detalhes": [f"[{foto_upload.name}] \n{resposta.text}"]
-                        })
-                        
-                        if os.path.exists(FICHEIRO_HISTORICO):
-                            df_existente = pd.read_csv(FICHEIRO_HISTORICO)
-                            df_final = pd.concat([df_existente, novo_registo], ignore_index=True)
-                        else:
-                            df_final = novo_registo
-                            
-                        df_final.to_csv(FICHEIRO_HISTORICO, index=False)
+                        resposta_texto = resposta.text
                         sucesso = True
                         
-                    except Exception as e:
-                        erro_str = str(e)
-                        if "429" in erro_str or "quota" in erro_str.lower():
-                            tentativas += 1
-                            if tentativas < max_tentativas:
-                                st.warning(f"⏳ Limite de pedidos atingido. A aguardar 12 segundos para tentar novamente (Tentativa {tentativas}/{max_tentativas})...")
-                                time.sleep(12) # Pausa de segurança para respeitar o limite de 1 por 12s (5 por min)
-                            else:
-                                st.error(f"⚠️ O limite de pedidos foi atingido repetidamente ao processar '{foto_upload.name}'. Tente enviar menos fotos de cada vez.")
-                                break
+                except Exception as e:
+                    erro_str = str(e)
+                    if "429" in erro_str or "quota" in erro_str.lower() or "ResourceExhausted" in erro_str:
+                        tentativas += 1
+                        if tentativas < max_tentativas:
+                            aviso_placeholder = st.warning(f"⏳ Limite de pedidos atingido. A aguardar 15 segundos para tentar novamente ({tentativas}/{max_tentativas})...")
+                            time.sleep(15) # Pausa estendida para limpar a janela de RPM do plano gratuito
+                            aviso_placeholder.empty()
                         else:
-                            st.error(f"⚠️ Erro ao processar '{foto_upload.name}': {erro_str}")
-                            break
+                            st.error(f"⚠️ O limite de pedidos foi atingido repetidamente para '{foto_upload.name}'. Tente enviar menos fotos de cada vez.")
+                    else:
+                        st.error(f"⚠️ Erro ao processar '{foto_upload.name}': {erro_str}")
+                        break
             
-            # Pausa extra entre talões diferentes para garantir que não estoura o limite por minuto
-            if index < total_fotos - 1 and sucesso:
-                time.sleep(12)
+            # Se obteve sucesso, guarda no histórico
+            if sucesso:
+                st.success(f"Análise de '{foto_upload.name}' concluída com sucesso!")
+                st.markdown(resposta_texto)
+                
+                novo_registo = pd.DataFrame({
+                    "Data": [pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")],
+                    "Detalhes": [f"[{foto_upload.name}] \n{resposta_texto}"]
+                })
+                
+                if os.path.exists(FICHEIRO_HISTORICO):
+                    df_existente = pd.read_csv(FICHEIRO_HISTORICO)
+                    df_final = pd.concat([df_existente, novo_registo], ignore_index=True)
+                else:
+                    df_final = novo_registo
+                    
+                df_final.to_csv(FICHEIRO_HISTORICO, index=False)
+                
+                # Pausa obrigatória entre talões diferentes para evitar disparar o limite no próximo ficheiro
+                if index < total_fotos - 1:
+                    with st.spinner("A aguardar 10 segundos antes do próximo talão para respeitar o limite..."):
+                        time.sleep(10)
             
             # Atualizar barra de progresso
             barrinha_progresso.progress((index + 1) / total_fotos)
@@ -115,7 +119,7 @@ st.subheader("💬 Conversar sobre o Histórico de Preços")
 if os.path.exists(FICHEIRO_HISTORICO):
     df_chat = pd.read_csv(FICHEIRO_HISTORICO)
     
-    pergunta_utilizador = st.text_input("Faça uma pergunta sobre os preços guardados (ex: Qual a diferença de preço de um produto no histórico?):")
+    pergunta_utilizador = st.text_input("Faça uma pergunta sobre os preços guardados:")
     
     if pergunta_utilizador:
         with st.spinner("A consultar o histórico..."):
@@ -131,10 +135,10 @@ if os.path.exists(FICHEIRO_HISTORICO):
                 st.write(resposta_chat.text)
             except Exception as e:
                 erro_str = str(e)
-                if "429" in erro_str or "quota" in erro_str.lower():
+                if "429" in erro_str or "quota" in erro_str.lower() or "ResourceExhausted" in erro_str:
                     st.warning(
                         "⚠️ **Limite de pedidos atingido temporariamente (Plano Gratuito)**\n\n"
-                        "Atingiu o limite de **5 pedidos por minuto**. Por favor, aguarde alguns segundos e tente novamente."
+                        "Atingiu o limite de **5 pedidos por minuto**. Por favor, aguarde 15 segundos e tente novamente."
                     )
                 else:
                     st.error(f"⚠️ Erro ao processar a pergunta: {erro_str}")
