@@ -8,7 +8,7 @@ from PIL import Image
 st.set_page_config(page_title="Assistente de Preços - Komprão", page_icon="🛒", layout="centered")
 
 st.title("🛒 Assistente de Preços - Komprão")
-st.write("Envie a foto do seu talão ou etiqueta de preço para registar e monitorizar os valores.")
+st.write("Envie uma ou mais fotos de talões ou etiquetas de preço para registar e monitorizar os valores.")
 
 # Configuração da chave do Gemini a partir dos Secrets do Streamlit
 if "GEMINI_API_KEY" in st.secrets:
@@ -17,53 +17,69 @@ if "GEMINI_API_KEY" in st.secrets:
 # Ficheiro local para guardar o histórico de preços
 FICHEIRO_HISTORICO = "historico_precos.csv"
 
-# Carregar imagem do utilizador
-foto_upload = st.file_uploader("Carregar foto do talão ou produto", type=["jpg", "jpeg", "png"])
+# Carregar imagens do utilizador (permite múltiplos ficheiros)
+fotos_upload = st.file_uploader(
+    "Carregar fotos dos talões ou produtos", 
+    type=["jpg", "jpeg", "png"], 
+    accept_multiple_files=True
+)
 
-if foto_upload is not None:
-    imagem = Image.open(foto_upload)
-    st.image(imagem, caption="Foto enviada", use_container_width=True)
+if fotos_upload:
+    st.info(f"Foram carregados {len(fotos_upload)} ficheiro(s). Clique abaixo para iniciar a análise individual.")
     
-    if st.button("Analisar e Registar Preços"):
-        with st.spinner("A analisar a imagem com inteligência artificial..."):
-            prompt = (
-                "Analisa esta imagem de um talão de compras ou etiqueta de preço do supermercado Komprão. "
-                "Extrai os dados de forma limpa e estruturada, indicando o nome do produto, a quantidade e o preço unitário ou total. "
-                "Retorna a resposta numa lista clara."
-            )
+    if st.button("Analisar e Registar Todos os Talões"):
+        barrinha_progresso = st.progress(0)
+        total_fotos = len(fotos_upload)
+        
+        for index, foto_upload in enumerate(fotos_upload):
+            imagem = Image.open(foto_upload)
+            st.image(imagem, caption=f"A analisar: {foto_upload.name}", use_container_width=True)
             
-            try:
-                # Utilização do modelo correto compatível com a sua credencial
-                modelo = genai.GenerativeModel('gemini-3.8-flash')
-                resposta = modelo.generate_content([imagem, prompt])
+            with st.spinner(f"A processar o talão {index + 1} de {total_fotos} ({foto_upload.name})..."):
+                prompt = (
+                    "Analisa esta imagem de um talão de compras ou etiqueta de preço do supermercado Komprão. "
+                    "Extrai os dados de forma limpa e estruturada, indicando o nome do produto, a quantidade e o preço unitário ou total. "
+                    "Retorna a resposta numa lista clara."
+                )
                 
-                st.success("Análise concluída!")
-                st.write(resposta.text)
-                
-                # Guardar o resultado no histórico CSV
-                novo_registo = pd.DataFrame({
-                    "Data": [pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")],
-                    "Detalhes": [resposta.text]
-                })
-                
-                if os.path.exists(FICHEIRO_HISTORICO):
-                    df_existente = pd.read_csv(FICHEIRO_HISTORICO)
-                    df_final = pd.concat([df_existente, novo_registo], ignore_index=True)
-                else:
-                    df_final = novo_registo
+                try:
+                    # Utilização do modelo compatível
+                    modelo = genai.GenerativeModel('gemini-3.8-flash')
+                    resposta = modelo.generate_content([imagem, prompt])
                     
-                df_final.to_csv(FICHEIRO_HISTORICO, index=False)
-                
-            except Exception as e:
-                erro_str = str(e)
-                if "429" in erro_str or "quota" in erro_str.lower():
-                    st.warning(
-                        "⚠️ **Limite de pedidos atingido temporariamente (Plano Gratuito)**\n\n"
-                        "Fez vários pedidos num curto espaço de tempo e atingiu o limite de **5 pedidos por minuto** da API gratuita.\n\n"
-                        "⏳ *Por favor, aguarde cerca de 10 a 30 segundos e clique novamente para continuar.*"
-                    )
-                else:
-                    st.error(f"⚠️ **Ocorreu um erro na execução:**\n\n{erro_str}")
+                    st.success(f"Análise de '{foto_upload.name}' concluída com sucesso!")
+                    st.write(resposta.text)
+                    
+                    # Guardar o resultado individual no histórico CSV
+                    novo_registo = pd.DataFrame({
+                        "Data": [pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")],
+                        "Detalhes": [f"[{foto_upload.name}] \n{resposta.text}"]
+                    })
+                    
+                    if os.path.exists(FICHEIRO_HISTORICO):
+                        df_existente = pd.read_csv(FICHEIRO_HISTORICO)
+                        df_final = pd.concat([df_existente, novo_registo], ignore_index=True)
+                    else:
+                        df_final = novo_registo
+                        
+                    df_final.to_csv(FICHEIRO_HISTORICO, index=False)
+                    
+                except Exception as e:
+                    erro_str = str(e)
+                    if "429" in erro_str or "quota" in erro_str.lower():
+                        st.warning(
+                            f"⚠️ **Limite de pedidos atingido (Plano Gratuito)**\n\n"
+                            f"Atingiu o limite de 5 pedidos por minuto ao processar '{foto_upload.name}'. "
+                            "⏳ *Aguarde alguns segundos antes de enviar mais talões.*"
+                        )
+                        break # Interrompe o ciclo para evitar bloquear mais
+                    else:
+                        st.error(f"⚠️ Erro ao processar '{foto_upload.name}': {erro_str}")
+            
+            # Atualizar barra de progresso
+            barrinha_progresso.progress((index + 1) / total_fotos)
+            
+        st.success("🎉 Processamento de todos os talões concluído!")
 
 # Secção para visualizar histórico guardado
 st.markdown("---")
