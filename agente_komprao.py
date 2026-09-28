@@ -1,7 +1,7 @@
 import os
 import streamlit as st
 import pandas as pd
-from google import genai
+import google.generativeai as genai
 from PIL import Image
 
 # Configuração da página
@@ -10,8 +10,9 @@ st.set_page_config(page_title="Assistente de Preços - Komprão", page_icon="�
 st.title("🛒 Assistente de Preços - Komprão")
 st.write("Envie a foto do seu talão ou etiqueta de preço para registar e monitorizar os valores.")
 
-# Configuração do cliente Gemini (lê a chave dos Secrets do Streamlit)
-client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+# Configuração da chave do Gemini a partir dos Secrets do Streamlit
+if "GEMINI_API_KEY" in st.secrets:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
 # Ficheiro local para guardar o histórico de preços
 FICHEIRO_HISTORICO = "historico_precos.csv"
@@ -31,28 +32,30 @@ if foto_upload is not None:
                 "Retorna a resposta numa lista clara."
             )
             
-            # Chamada ao modelo Gemini com capacidade multimodal (visão)
-            resposta = client.models.generate_content(
-                model='gemini-1.5-flash',
-                contents=[imagem, prompt]
-            )
-            
-            st.success("Análise concluída!")
-            st.write(resposta.text)
-            
-            # Opcional: Guardar o resultado bruto no histórico CSV
-            novo_registo = pd.DataFrame({
-                "Data": [pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")],
-                "Detalhes": [resposta.text]
-            })
-            
-            if os.path.exists(FICHEIRO_HISTORICO):
-                df_existente = pd.read_csv(FICHEIRO_HISTORICO)
-                df_final = pd.concat([df_existente, novo_registo], ignore_index=True)
-            else:
-                df_final = novo_registo
+            try:
+                # Utilização do modelo multimodal estável com a biblioteca clássica
+                modelo = genai.GenerativeModel('gemini-1.5-flash')
+                resposta = modelo.generate_content([imagem, prompt])
                 
-            df_final.to_csv(FICHEIRO_HISTORICO, index=False)
+                st.success("Análise concluída!")
+                st.write(resposta.text)
+                
+                # Guardar o resultado no histórico CSV
+                novo_registo = pd.DataFrame({
+                    "Data": [pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")],
+                    "Detalhes": [resposta.text]
+                })
+                
+                if os.path.exists(FICHEIRO_HISTORICO):
+                    df_existente = pd.read_csv(FICHEIRO_HISTORICO)
+                    df_final = pd.concat([df_existente, novo_registo], ignore_index=True)
+                else:
+                    df_final = novo_registo
+                    
+                df_final.to_csv(FICHEIRO_HISTORICO, index=False)
+                
+            except Exception as e:
+                st.error(f"Ocorreu um erro ao comunicar com a inteligência artificial: {e}")
 
 # Secção para visualizar histórico guardado
 st.markdown("---")
