@@ -24,7 +24,7 @@ foto_upload = st.file_uploader("Carregar foto do talão ou produto", type=["jpg"
 
 if foto_upload is not None:
     imagem = Image.open(foto_upload)
-    st.image(imagem, caption="Foto enviada", use_column_width=True)
+    st.image(imagem, caption="Foto enviada", use_container_width=True)
     
     if st.button("Analisar e Registar Preços"):
         with st.spinner("A analisar a imagem com inteligência artificial..."):
@@ -42,6 +42,20 @@ if foto_upload is not None:
             
             st.success("Análise concluída!")
             st.write(resposta.text)
+            
+            # Opcional: Guardar o resultado bruto no histórico CSV
+            novo_registo = pd.DataFrame({
+                "Data": [pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")],
+                "Detalhes": [resposta.text]
+            })
+            
+            if os.path.exists(FICHEIRO_HISTORICO):
+                df_existente = pd.read_csv(FICHEIRO_HISTORICO)
+                df_final = pd.concat([df_existente, novo_registo], ignore_index=True)
+            else:
+                df_final = novo_registo
+                
+            df_final.to_csv(FICHEIRO_HISTORICO, index=False)
 
 # Secção para visualizar histórico guardado
 st.markdown("---")
@@ -50,5 +64,9 @@ st.subheader("📊 Histórico de Compras Guardado")
 if os.path.exists(FICHEIRO_HISTORICO):
     df_historico = pd.read_csv(FICHEIRO_HISTORICO)
     st.dataframe(df_historico)
+    
+    if st.button("Limpar Histórico"):
+        os.remove(FICHEIRO_HISTORICO)
+        st.rerun()
 else:
     st.info("Ainda não existem registos guardados no histórico.")
