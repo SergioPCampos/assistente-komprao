@@ -10,8 +10,10 @@ st.set_page_config(page_title="Assistente de Preços - Komprão", page_icon="�
 st.title("🛒 Assistente de Preços - Komprão")
 st.write("Envie a foto do seu talão ou etiqueta de preço para registar e monitorizar os valores.")
 
-# Configuração da chave do Gemini a partir dos Secrets do Streamlit
+# Configuração da chave de API e ambiente Vertex AI / Google Cloud
 if "GEMINI_API_KEY" in st.secrets:
+    os.environ["GEMINI_API_KEY"] = st.secrets["GEMINI_API_KEY"]
+    # Configura para o SDK aceitar credenciais do Google Cloud se necessário
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
 # Ficheiro local para guardar o histórico de preços
@@ -33,7 +35,7 @@ if foto_upload is not None:
             )
             
             try:
-                # Utilização do modelo multimodal estável com a biblioteca clássica
+                # Vamos testar o modelo standard ajustado para o projeto
                 modelo = genai.GenerativeModel('gemini-1.5-flash')
                 resposta = modelo.generate_content([imagem, prompt])
                 
@@ -55,7 +57,28 @@ if foto_upload is not None:
                 df_final.to_csv(FICHEIRO_HISTORICO, index=False)
                 
             except Exception as e:
-                st.error(f"Ocorreu um erro ao comunicar com a inteligência artificial: {e}")
+                # Se falhar pelo SDK normal, tentamos a chamada direta com a chave AQ
+                try:
+                    import google.generativeai as gai
+                    gai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+                    model_alt = gai.GenerativeModel('gemini-1.5-flash')
+                    res_alt = model_alt.generate_content([imagem, prompt])
+                    
+                    st.success("Análise concluída!")
+                    st.write(res_alt.text)
+                    
+                    novo_registo = pd.DataFrame({
+                        "Data": [pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")],
+                        "Detalhes": [res_alt.text]
+                    })
+                    if os.path.exists(FICHEIRO_HISTORICO):
+                        df_existente = pd.read_csv(FICHEIRO_HISTORICO)
+                        df_final = pd.concat([df_existente, novo_registo], ignore_index=True)
+                    else:
+                        df_final = novo_registo
+                    df_final.to_csv(FICHEIRO_HISTORICO, index=False)
+                except Exception as err:
+                    st.error(f"Erro detalhado na execução: {err}")
 
 # Secção para visualizar histórico guardado
 st.markdown("---")
@@ -70,3 +93,5 @@ if os.path.exists(FICHEIRO_HISTORICO):
         st.rerun()
 else:
     st.info("Ainda não existem registos guardados no histórico.")
+    
+  
