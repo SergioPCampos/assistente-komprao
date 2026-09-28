@@ -9,7 +9,7 @@ from PIL import Image
 st.set_page_config(page_title="Assistente de Preços - Komprão", page_icon="🛒", layout="centered")
 
 st.title("🛒 Assistente de Preços - Komprão")
-st.write("Envie fotos de talões ou etiquetas de preço (idealmente em lotes de até **3 recibos** por vez para respeitar o limite gratuito).")
+st.write("Envie fotos de talões ou etiquetas de preço. O sistema processa os recibos de forma controlada para respeitar o limite gratuito.")
 
 # Configuração da chave do Gemini a partir dos Secrets do Streamlit
 if "GEMINI_API_KEY" in st.secrets:
@@ -27,10 +27,7 @@ fotos_upload = st.file_uploader(
 
 if fotos_upload:
     total_fotos = len(fotos_upload)
-    st.info(f"Foram carregados {total_fotos} ficheiro(s).")
-    
-    if total_fotos > 3:
-        st.warning("⚠️ Carregou mais de 3 recibos. Para evitar o limite de 5 pedidos/minuto do plano gratuito, o sistema irá processá-los em lotes de 3 com pequenas pausas automáticas.")
+    st.info(f"Foram carregados {total_fotos} ficheiro(s). O processamento fará pausas automáticas entre os talões para evitar bloqueios.")
 
     if st.button("Analisar e Registar Talões"):
         barrinha_progresso = st.progress(0)
@@ -47,13 +44,13 @@ if fotos_upload:
             
             sucesso = False
             tentativas = 0
-            max_tentativas = 3
+            max_tentativas = 6  # Aumentado para dar mais margem de recuperação
             resposta_texto = ""
             
-            # Sistema de tentativas robusto com pausa integrada
+            # Sistema de tentativas robusto com espera progressiva
             while not sucesso and tentativas < max_tentativas:
                 try:
-                    with st.spinner(f"A processar o talão {index + 1} de {total_fotos} ({foto_upload.name})..."):
+                    with st.spinner(f"A processar o talão {index + 1} de {total_fotos} ({foto_upload.name}) - Tentativa {tentativas + 1}..."):
                         modelo = genai.GenerativeModel('gemini-3.8-flash')
                         resposta = modelo.generate_content([imagem, prompt])
                         resposta_texto = resposta.text
@@ -64,11 +61,12 @@ if fotos_upload:
                     if "429" in erro_str or "quota" in erro_str.lower() or "ResourceExhausted" in erro_str:
                         tentativas += 1
                         if tentativas < max_tentativas:
-                            aviso_placeholder = st.warning(f"⏳ Limite de pedidos atingido. A aguardar 12 segundos para tentar novamente ({tentativas}/{max_tentativas})...")
-                            time.sleep(12)
+                            tempo_espera = 20 * tentativas # Aumenta progressivamente: 20s, 40s, 60s...
+                            aviso_placeholder = st.warning(f"⏳ Limite de pedidos atingido. A aguardar {tempo_espera} segundos para limpar a janela da API (Tentativa {tentativas}/{max_tentativas})...")
+                            time.sleep(tempo_espera)
                             aviso_placeholder.empty()
                         else:
-                            st.error(f"⚠️ O limite de pedidos foi atingido para '{foto_upload.name}'. Tente novamente mais tarde.")
+                            st.error(f"⚠️ O limite de pedidos esgotou as tentativas para '{foto_upload.name}'. Tente enviar menos talões de uma vez.")
                     else:
                         st.error(f"⚠️ Erro ao processar '{foto_upload.name}': {erro_str}")
                         break
@@ -91,12 +89,10 @@ if fotos_upload:
                     
                 df_final.to_csv(FICHEIRO_HISTORICO, index=False)
                 
-                # Pausa inteligente: A cada 3 fotos processadas, dá uma pausa maior de 15 segundos para limpar a janela de RPM
-                if (index + 1) % 3 == 0 and index < total_fotos - 1:
-                    with st.spinner("☕ Lote de 3 talões concluído. A fazer uma pausa de 15 segundos para respeitar o limite gratuito..."):
-                        time.sleep(15)
-                elif index < total_fotos - 1:
-                    time.sleep(3) # Pausa curta entre fotos individuais do mesmo lote
+                # Pausa preventiva obrigatória de 20 segundos entre cada talão para garantir segurança absoluta contra o erro 429
+                if index < total_fotos - 1:
+                    with st.spinner("☕ Pausa de segurança de 20 segundos antes do próximo talão..."):
+                        time.sleep(20)
             
             # Atualizar barra de progresso
             barrinha_progresso.progress((index + 1) / total_fotos)
