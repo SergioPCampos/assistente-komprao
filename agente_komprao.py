@@ -10,10 +10,8 @@ st.set_page_config(page_title="Assistente de Preços - Komprão", page_icon="�
 st.title("🛒 Assistente de Preços - Komprão")
 st.write("Envie a foto do seu talão ou etiqueta de preço para registar e monitorizar os valores.")
 
-# Configuração da chave de API e ambiente Vertex AI / Google Cloud
+# Configuração da chave do Gemini a partir dos Secrets do Streamlit
 if "GEMINI_API_KEY" in st.secrets:
-    os.environ["GEMINI_API_KEY"] = st.secrets["GEMINI_API_KEY"]
-    # Configura para o SDK aceitar credenciais do Google Cloud se necessário
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
 # Ficheiro local para guardar o histórico de preços
@@ -35,8 +33,8 @@ if foto_upload is not None:
             )
             
             try:
-                # Vamos testar o modelo standard ajustado para o projeto
-                modelo = genai.GenerativeModel('gemini-3.8-flash')
+                # Utilização do modelo multimodal estável com a biblioteca clássica
+                modelo = genai.GenerativeModel('gemini-1.5-flash')
                 resposta = modelo.generate_content([imagem, prompt])
                 
                 st.success("Análise concluída!")
@@ -57,28 +55,15 @@ if foto_upload is not None:
                 df_final.to_csv(FICHEIRO_HISTORICO, index=False)
                 
             except Exception as e:
-                # Se falhar pelo SDK normal, tentamos a chamada direta com a chave AQ
-                try:
-                    import google.generativeai as gai
-                    gai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-                    model_alt = gai.GenerativeModel('gemini-3.8-flash')
-                    res_alt = model_alt.generate_content([imagem, prompt])
-                    
-                    st.success("Análise concluída!")
-                    st.write(res_alt.text)
-                    
-                    novo_registo = pd.DataFrame({
-                        "Data": [pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")],
-                        "Detalhes": [res_alt.text]
-                    })
-                    if os.path.exists(FICHEIRO_HISTORICO):
-                        df_existente = pd.read_csv(FICHEIRO_HISTORICO)
-                        df_final = pd.concat([df_existente, novo_registo], ignore_index=True)
-                    else:
-                        df_final = novo_registo
-                    df_final.to_csv(FICHEIRO_HISTORICO, index=False)
-                except Exception as err:
-                    st.error(f"Erro detalhado na execução: {err}")
+                erro_str = str(e)
+                if "429" in erro_str or "quota" in erro_str.lower():
+                    st.warning(
+                        "⚠️ **Limite de pedidos atingido temporariamente (Plano Gratuito)**\n\n"
+                        "Fez vários pedidos num curto espaço de tempo e atingiu o limite de **5 pedidos por minuto** da API gratuita.\n\n"
+                        "⏳ *Por favor, aguarde cerca de 10 a 30 segundos e clique novamente para continuar.*"
+                    )
+                else:
+                    st.error(f"⚠️ **Ocorreu um erro na execução:**\n\n{erro_str}")
 
 # Secção para visualizar histórico guardado
 st.markdown("---")
@@ -93,32 +78,3 @@ if os.path.exists(FICHEIRO_HISTORICO):
         st.rerun()
 else:
     st.info("Ainda não existem registos guardados no histórico.")
-
-# --- Secção de Chat Interativo com o Histórico ---
-st.markdown("---")
-st.subheader("💬 Conversar sobre o Histórico de Preços")
-
-if os.path.exists(FICHEIRO_HISTORICO):
-    df_chat = pd.read_csv(FICHEIRO_HISTORICO)
-    
-    # Caixa de texto para o utilizador fazer perguntas
-    pergunta_utilizador = st.text_input("Faça uma pergunta sobre os preços guardados (ex: Qual a diferença de preço do leite?):")
-    
-    if pergunta_utilizador:
-        with st.spinner("A consultar o histórico..."):
-            prompt_chat = (
-                f"Com base no seguinte histórico de preços em CSV:\n{df_chat.to_string()}\n\n"
-                f"Responde à seguinte pergunta do utilizador de forma clara e objetiva: {pergunta_utilizador}"
-            )
-            
-            try:
-                modelo_chat = genai.GenerativeModel('gemini-3.8-flash')
-                resposta_chat = modelo_chat.generate_content(prompt_chat)
-                st.markdown("**Resposta do Assistente:**")
-                st.write(resposta_chat.text)
-            except Exception as e:
-                st.error(f"Erro ao processar a pergunta: {e}")
-else:
-    st.info("Registe pelo menos um talão para poder conversar sobre o histórico.")
-    
-  
