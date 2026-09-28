@@ -11,10 +11,7 @@ st.title("🛒 Assistente de Preços - Komprão")
 st.write("Envie a foto do seu talão ou etiqueta de preço para registar e monitorizar os valores.")
 
 # Configuração do cliente Gemini (lê a chave dos Secrets do Streamlit)
-if "GEMINI_API_KEY" in st.secrets:
-    os.environ["GEMINI_API_KEY"] = st.secrets["GEMINI_API_KEY"]
-
-client = genai.Client()
+client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 
 # Ficheiro local para guardar o histórico de preços
 FICHEIRO_HISTORICO = "historico_precos.csv"
