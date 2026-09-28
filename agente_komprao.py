@@ -36,7 +36,7 @@ if foto_upload is not None:
             
             try:
                 # Vamos testar o modelo standard ajustado para o projeto
-                modelo = genai.GenerativeModel('gemini-1.5-flash')
+                modelo = genai.GenerativeModel('gemini-3.8-flash')
                 resposta = modelo.generate_content([imagem, prompt])
                 
                 st.success("Análise concluída!")
@@ -61,7 +61,7 @@ if foto_upload is not None:
                 try:
                     import google.generativeai as gai
                     gai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-                    model_alt = gai.GenerativeModel('gemini-1.5-flash')
+                    model_alt = gai.GenerativeModel('gemini-3.8-flash')
                     res_alt = model_alt.generate_content([imagem, prompt])
                     
                     st.success("Análise concluída!")
