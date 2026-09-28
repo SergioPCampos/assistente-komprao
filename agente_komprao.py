@@ -36,7 +36,7 @@ if foto_upload is not None:
             
             # Chamada ao modelo Gemini com capacidade multimodal (visão)
             resposta = client.models.generate_content(
-                model='gemini-2.5-flash',
+                model='gemini-1.5-flash',
                 contents=[imagem, prompt]
             )
             
