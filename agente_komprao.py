@@ -9,7 +9,7 @@ from PIL import Image
 st.set_page_config(page_title="Assistente de Preços - Komprão", page_icon="🛒", layout="centered")
 
 st.title("🛒 Assistente de Preços - Komprão")
-st.write("Envie os seus talões para análise individual com o modelo otimizado e registo automático no histórico.")
+st.write("Envie os seus talões para análise individual e registo automático no histórico.")
 
 # Configuração da chave do Gemini a partir dos Secrets do Streamlit
 if "GEMINI_API_KEY" in st.secrets:
@@ -54,9 +54,9 @@ if fotos_upload:
             
             while not sucesso and tentativa < max_tentativas:
                 try:
-                    with st.spinner(f"A analisar '{foto_file.name}' com gemini-1.5-flash..."):
-                        # Alterado para o modelo gemini-1.5-flash
-                        modelo = genai.GenerativeModel('gemini-1.5-flash')
+                    with st.spinner(f"A analisar '{foto_file.name}'..."):
+                        # Modelo corrigido para o identificador standard suportado
+                        modelo = genai.GenerativeModel('gemini-2.5-flash')
                         resposta = modelo.generate_content([imagem, prompt])
                         
                         st.success(f"Análise de '{foto_file.name}' concluída com sucesso!")
@@ -136,8 +136,7 @@ if os.path.exists(FICHEIRO_HISTORICO):
             )
             
             try:
-                # Chat também atualizado para gemini-1.5-flash
-                modelo_chat = genai.GenerativeModel('gemini-1.5-flash')
+                modelo_chat = genai.GenerativeModel('gemini-2.5-flash')
                 resposta_chat = modelo_chat.generate_content(prompt_chat)
                 st.markdown("**Resposta do Assistente:**")
                 st.write(resposta_chat.text)
