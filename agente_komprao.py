@@ -9,7 +9,7 @@ from PIL import Image
 st.set_page_config(page_title="Assistente de Preços - Komprão", page_icon="🛒", layout="centered")
 
 st.title("🛒 Assistente de Preços - Komprão")
-st.write("Envie os seus talões para análise individual e registo automático no histórico.")
+st.write("Envie os seus talões para análise individual com o modelo otimizado e registo automático no histórico.")
 
 # Configuração da chave do Gemini a partir dos Secrets do Streamlit
 if "GEMINI_API_KEY" in st.secrets:
@@ -54,8 +54,9 @@ if fotos_upload:
             
             while not sucesso and tentativa < max_tentativas:
                 try:
-                    with st.spinner(f"A analisar '{foto_file.name}'..."):
-                        modelo = genai.GenerativeModel('gemini-3.8-flash')
+                    with st.spinner(f"A analisar '{foto_file.name}' com gemini-1.5-flash..."):
+                        # Alterado para o modelo gemini-1.5-flash
+                        modelo = genai.GenerativeModel('gemini-1.5-flash')
                         resposta = modelo.generate_content([imagem, prompt])
                         
                         st.success(f"Análise de '{foto_file.name}' concluída com sucesso!")
@@ -83,16 +84,16 @@ if fotos_upload:
                         st.error(
                             "🚨 **Cota Diária Esgotada!**\n\n"
                             "A cota gratuita de requisições diárias para este modelo esgotou-se. "
-                            "O serviço voltará a ficar disponível apenas amanhã ou caso atualize a chave de API."
+                            "O serviço voltará a ficar disponível apenas amanhã."
                         )
                         break
                     elif "429" in erro_str or "quota" in erro_str.lower() or "ResourceExhausted" in erro_str:
                         tentativa += 1
                         if tentativa < max_tentativas:
                             aviso_placeholder = st.empty()
-                            for segundos in range(20, 0, -1):
+                            for segundos in range(15, 0, -1):
                                 aviso_placeholder.warning(
-                                    f"⚠️ **Limite de requisições por minuto atingido**\n\n"
+                                    f"⚠️ **Limite de requisições atingido**\n\n"
                                     f"A aguardar limpeza da janela da API: **{segundos} segundos**..."
                                 )
                                 time.sleep(1)
@@ -135,7 +136,8 @@ if os.path.exists(FICHEIRO_HISTORICO):
             )
             
             try:
-                modelo_chat = genai.GenerativeModel('gemini-3.8-flash')
+                # Chat também atualizado para gemini-1.5-flash
+                modelo_chat = genai.GenerativeModel('gemini-1.5-flash')
                 resposta_chat = modelo_chat.generate_content(prompt_chat)
                 st.markdown("**Resposta do Assistente:**")
                 st.write(resposta_chat.text)
@@ -144,7 +146,7 @@ if os.path.exists(FICHEIRO_HISTORICO):
                 if "perDay" in erro_str or ("quota" in erro_str.lower() and "day" in erro_str.lower()):
                     st.error("🚨 **Cota Diária Esgotada!** O limite diário de pedidos foi atingido.")
                 elif "429" in erro_str or "quota" in erro_str.lower():
-                    st.warning("⚠️ Limite de minutos atingido. Aguarde um momento e tente novamente.")
+                    st.warning("⚠️ Limite atingido. Aguarde um momento e tente novamente.")
                 else:
                     st.error(f"⚠️ Erro: {erro_str}")
 else:
