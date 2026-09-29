@@ -54,9 +54,9 @@ if fotos_upload:
             
             while not sucesso and tentativa < max_tentativas:
                 try:
-                    with st.spinner(f"A analisar '{foto_file.name}'..."):
-                        # Modelo corrigido para o identificador standard suportado
-                        modelo = genai.GenerativeModel('gemini-2.5-flash')
+                    with st.spinner(f"A analisar '{foto_file.name}' com gemini-3.8-flash..."):
+                        # Modelo correto exigido pela API atual
+                        modelo = genai.GenerativeModel('gemini-3.8-flash')
                         resposta = modelo.generate_content([imagem, prompt])
                         
                         st.success(f"Análise de '{foto_file.name}' concluída com sucesso!")
@@ -136,7 +136,7 @@ if os.path.exists(FICHEIRO_HISTORICO):
             )
             
             try:
-                modelo_chat = genai.GenerativeModel('gemini-2.5-flash')
+                modelo_chat = genai.GenerativeModel('gemini-3.8-flash')
                 resposta_chat = modelo_chat.generate_content(prompt_chat)
                 st.markdown("**Resposta do Assistente:**")
                 st.write(resposta_chat.text)
