@@ -1,4 +1,5 @@
 import os
+import time
 import streamlit as st
 import pandas as pd
 import google.generativeai as genai
@@ -8,7 +9,7 @@ from PIL import Image
 st.set_page_config(page_title="Assistente de Preços - Komprão", page_icon="🛒", layout="centered")
 
 st.title("🛒 Assistente de Preços - Komprão")
-st.write("Envie os seus talões. Para respeitar o plano gratuito da API, cada talão pode ser analisado individualmente com um clique, evitando bloqueios.")
+st.write("Envie os seus talões. Cada talão é analisado individualmente. Se atingir o limite gratuito, o sistema fará uma contagem decrescente automática.")
 
 # Configuração da chave do Gemini a partir dos Secrets do Streamlit
 if "GEMINI_API_KEY" in st.secrets:
@@ -27,9 +28,8 @@ fotos_upload = st.file_uploader(
 if fotos_upload:
     st.markdown("---")
     st.subheader("📋 Ficheiros Carregados Prontos para Análise")
-    st.info("Clique no botão abaixo de cada talão para fazer a leitura com calma, um de cada vez.")
     
-    # Percorrer cada foto carregada e dar-lhe um espaço próprio com botão individual
+    # Percorrer cada foto carregada
     for index, foto_file in enumerate(fotos_upload):
         col1, col2 = st.columns([1, 2])
         
@@ -42,43 +42,60 @@ if fotos_upload:
             
             # Botão individual para cada talão
             if st.button(f"🔍 Analisar Talão {index + 1}", key=f"btn_{index}"):
-                with st.spinner(f"A analisar '{foto_file.name}'..."):
-                    prompt = (
-                        "Analisa esta imagem de um talão de compras ou etiqueta de preço do supermercado Komprão. "
-                        "Extrai os dados de forma limpa e estruturada, indicando o nome do produto, a quantidade e o preço unitário ou total. "
-                        "Retorna a resposta numa lista clara."
-                    )
-                    
+                prompt = (
+                    "Analisa esta imagem de um talão de compras ou etiqueta de preço do supermercado Komprão. "
+                    "Extrai os dados de forma limpa e estruturada, indicando o nome do produto, a quantidade e o preço unitário ou total. "
+                    "Retorna a resposta numa lista clara."
+                )
+                
+                sucesso = False
+                tentativa = 0
+                max_tentativas = 3
+                
+                # Ciclo com tentativas e temporizador visual automático
+                while not sucesso and tentativa < max_tentativas:
                     try:
-                        modelo = genai.GenerativeModel('gemini-3.8-flash')
-                        resposta = modelo.generate_content([imagem, prompt])
-                        
-                        st.success("Análise concluída com sucesso!")
-                        st.markdown(resposta.text)
-                        
-                        # Guardar o resultado individual no histórico CSV
-                        novo_registo = pd.DataFrame({
-                            "Data": [pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")],
-                            "Detalhes": [f"[{foto_file.name}] \n{resposta.text}"]
-                        })
-                        
-                        if os.path.exists(FICHEIRO_HISTORICO):
-                            df_existente = pd.read_csv(FICHEIRO_HISTORICO)
-                            df_final = pd.concat([df_existente, novo_registo], ignore_index=True)
-                        else:
-                            df_final = novo_registo
+                        with st.spinner(f"A analisar '{foto_file.name}'..."):
+                            modelo = genai.GenerativeModel('gemini-3.8-flash')
+                            resposta = modelo.generate_content([imagem, prompt])
                             
-                        df_final.to_csv(FICHEIRO_HISTORICO, index=False)
-                        
+                            st.success("Análise concluída com sucesso!")
+                            st.markdown(resposta.text)
+                            
+                            # Guardar o resultado individual no histórico CSV
+                            novo_registo = pd.DataFrame({
+                                "Data": [pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")],
+                                "Detalhes": [f"[{foto_file.name}] \n{resposta.text}"]
+                            })
+                            
+                            if os.path.exists(FICHEIRO_HISTORICO):
+                                df_existente = pd.read_csv(FICHEIRO_HISTORICO)
+                                df_final = pd.concat([df_existente, novo_registo], ignore_index=True)
+                            else:
+                                df_final = novo_registo
+                                
+                            df_final.to_csv(FICHEIRO_HISTORICO, index=False)
+                            sucesso = True
+                            
                     except Exception as e:
                         erro_str = str(e)
                         if "429" in erro_str or "quota" in erro_str.lower() or "ResourceExhausted" in erro_str:
-                            st.warning(
-                                "⚠️ **Limite de pedidos atingido (Plano Gratuito)**\n\n"
-                                "Atingiu o limite momentâneo da API. Aguarde 30 segundos e clique novamente no botão deste talão."
-                            )
+                            tentativa += 1
+                            if tentativa < max_tentativas:
+                                # Temporizador visual em contagem decrescente
+                                aviso_placeholder = st.empty()
+                                for segundos in range(35, 0, -1):
+                                    aviso_placeholder.warning(
+                                        f"⚠️ **Limite da API Atingido (Plano Gratuito)**\n\n"
+                                        f"A aguardar a limpeza da janela de requisições para re-tentar automaticamente: **{segundos} segundos** restantes..."
+                                    )
+                                    time.sleep(1)
+                                aviso_placeholder.empty()
+                            else:
+                                st.error("⚠️ O limite foi atingido várias tentativas seguidas. Por favor, aguarde alguns minutos antes de tentar novamente.")
                         else:
                             st.error(f"⚠️ Erro ao processar: {erro_str}")
+                            break
         
         st.markdown("---")
 
